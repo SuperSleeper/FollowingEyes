@@ -38,6 +38,25 @@ Halloween eyes that watch you. Open the page on a phone or laptop, prop it in a 
 - The fire sound is generated live with the Web Audio API: low-passed brown noise for the roar, filtered noise for the hiss, and random noise bursts for crackles. No audio files.
 - Everything runs in one HTML file with no libraries.
 
+## Code layout
+
+Everything lives in `index.html`. The script is split into numbered sections, with each style's code kept together:
+
+| Section | What it holds |
+|---|---|
+| 1. Setup | Canvas, page elements, shared settings |
+| 2. Settings panel | Buttons and sliders |
+| 3. Camera | Opening and switching cameras, error messages |
+| 4. Motion tracker | Finds where movement is in the camera image |
+| 5. Gaze & blink | Where the eyes look, pupil size, blinking |
+| 6. Eyes | `classicEye()` (shared eyeball) and the two-eye style |
+| 7. Pumpkin | Jack-o'-lantern body, grin, and eyes |
+| 8. Cyclops | One large eye |
+| 9. Inferno | 9a fire particles, 9b storm sky, 9c fire sound, 9d the eye |
+| 10. Main loop | Style registry (`STYLES`) and the per-frame update |
+
+**To add a style:** add a button with `data-s="name"` to the panel, then add an entry to `STYLES` with a `draw(scene)` function. `activate()` and `deactivate()` are optional.
+
 ## Privacy
 
 Nothing is recorded, stored, or sent anywhere. Camera frames are processed in the browser and discarded.
