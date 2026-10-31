@@ -266,6 +266,7 @@
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = sg; ctx.fill(); ctx.clip();
 
+    // Bloodshot veins
     ctx.strokeStyle = 'rgba(170,20,20,.45)'; ctx.lineWidth = r * .012;
     for (let i = 0; i < 9; i++) {
       const a = i * 0.7 + cx * 0.001;
@@ -275,6 +276,7 @@
       ctx.stroke();
     }
 
+    // Iris & Pupil
     const ix = cx + look.x * r * .45, iy = cy + look.y * r * .4, ir = r * .45;
     ctx.shadowColor = irisCol; ctx.shadowBlur = r * .5;
     const ig = ctx.createRadialGradient(ix, iy, ir * .2, ix, iy, ir);
@@ -288,20 +290,56 @@
     ctx.fillStyle = 'rgba(255,255,255,.75)';
     ctx.beginPath(); ctx.arc(ix - ir * .35, iy - ir * .4, ir * .14, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-
-    if (lid > 0) {
-      const bar = (r * 2 + 4) * lid / 2;
-      ctx.fillStyle = '#050304';
-      ctx.fillRect(cx - r - 2, cy - r - 2, r * 2 + 4, bar);
-      ctx.fillRect(cx - r - 2, cy + r + 2 - bar, r * 2 + 4, bar);
-    }
   }
 
   const EyesStyle = {
     draw(s) {
-      const r = Math.min(s.w * .21, s.h * .38), gap = r * 1.25;
-      classicEye(s.w / 2 - gap, s.h / 2, r, s, '#e2541a');
-      classicEye(s.w / 2 + gap, s.h / 2, r, s, '#e2541a');
+      const { w, h, lid } = s;
+      const r = Math.min(w * .21, h * .38), gap = r * 1.25;
+      const lx = w / 2 - gap, rx = w / 2 + gap, cy = h / 2;
+
+      // Draw standard eyeballs
+      classicEye(lx, cy, r, s, '#e2541a');
+      classicEye(rx, cy, r, s, '#e2541a');
+
+      // ANGRY OVERLAY: One continuous curved mask over both eyes
+      ctx.save();
+      ctx.fillStyle = '#050304';
+
+      // Curved Brow (Large arc sweeping down between eyes)
+      ctx.beginPath();
+      ctx.moveTo(lx - r - 20, cy - r - 20);
+      ctx.lineTo(rx + r + 20, cy - r - 20);
+      ctx.lineTo(rx + r + 20, cy - r * 0.15);
+      ctx.quadraticCurveTo(w / 2, cy + r * 0.55, lx - r - 20, cy - r * 0.15);
+      ctx.closePath();
+      ctx.fill();
+
+      // Lower Lids (Curved upward squints)
+      ctx.beginPath();
+      ctx.arc(lx, cy + r * 1.35, r * 0.85, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.lineTo(lx + r + 10, cy + r + 10);
+      ctx.lineTo(lx - r - 10, cy + r + 10);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(rx, cy + r * 1.35, r * 0.85, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.lineTo(rx + r + 10, cy + r + 10);
+      ctx.lineTo(rx - r - 10, cy + r + 10);
+      ctx.closePath();
+      ctx.fill();
+
+      // Dynamic Blinking Overlay
+      if (lid > 0) {
+        const bar = (r * 2 + 10) * lid / 2;
+        ctx.fillRect(lx - r - 10, cy - r - 10, r * 2 + 20, bar + r * 0.4);
+        ctx.fillRect(lx - r - 10, cy + r + 10 - bar - r * 0.4, r * 2 + 20, bar + r * 0.4);
+        ctx.fillRect(rx - r - 10, cy - r - 10, r * 2 + 20, bar + r * 0.4);
+        ctx.fillRect(rx - r - 10, cy + r + 10 - bar - r * 0.4, r * 2 + 20, bar + r * 0.4);
+      }
+
+      ctx.restore();
     }
   };
 
@@ -561,7 +599,7 @@
         ctx.restore();
       }
 
-      // Core Eye Base (Centered relative to iris for smooth light transitions)
+      // Core Eye Base
       drawAlmondPath(ctx, 1, 1, 0);
       const bgGrad = ctx.createRadialGradient(px, py, ry * 0.05, px, py, rx * 1.1);
       bgGrad.addColorStop(0, '#ffffff');
@@ -572,9 +610,9 @@
       bgGrad.addColorStop(1, 'rgba(10, 1, 0, 0)');
       ctx.fillStyle = bgGrad;
       ctx.fill();
-      ctx.clip(); // Keep rays and interior flame details bound to the eye shape
+      ctx.clip();
 
-      // 4. Radiant Light Tendrils (Anchored to follow the pupil position `px, py`)
+      // 4. Radiant Light Tendrils
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 32; i++) {
@@ -583,7 +621,7 @@
         ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,230,120,0.42)' : 'rgba(255,80,0,0.35)';
         ctx.lineWidth = rx * 0.025;
         ctx.beginPath();
-        ctx.moveTo(px, py); // Light tendrils sweep from tracking pupil location
+        ctx.moveTo(px, py);
         ctx.lineTo(px + Math.cos(ang) * len, py + Math.sin(ang) * (len * 0.62));
         ctx.stroke();
       }
@@ -602,7 +640,7 @@
       ctx.fill();
       ctx.restore();
 
-      // Fire Particles emanating from pupil
+      // Fire Particles
       Fire.spawn(px, py, rx * 0.3, rx, (4 + 6 * intensity) | 0, intensity);
       Fire.draw(rx);
 
