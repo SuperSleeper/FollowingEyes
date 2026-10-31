@@ -376,6 +376,75 @@
     ctx.restore(); ctx.globalAlpha = 1;
   }
 
+  // --- Storm clouds rolling toward the viewer ---
+  function cloudSprite(seed) {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d');
+    let rnd = seed;
+    const r = () => { rnd = (rnd * 16807) % 2147483647; return rnd / 2147483647; };
+    for (let i = 0; i < 26; i++) {
+      const x = 128 + (r() - .5) * 150, y = 128 + (r() - .5) * 90, rad = 30 + r() * 55;
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      const shade = 6 + r() * 14;
+      gr.addColorStop(0, `rgba(${shade + 8},${shade + 2},${shade},.75)`);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
+    }
+    // ember light catching the underside
+    g.globalCompositeOperation = 'source-atop';
+    const lit = g.createLinearGradient(0, 90, 0, 230);
+    lit.addColorStop(0, 'rgba(0,0,0,0)'); lit.addColorStop(1, 'rgba(255,90,20,.35)');
+    g.fillStyle = lit; g.fillRect(0, 0, 256, 256);
+    return c;
+  }
+  const cloudSprites = [11, 97, 403, 1201, 5003].map(cloudSprite);
+  let clouds = [], flash = 0, nextFlash = performance.now() + 4000;
+
+  function drawStorm(w, h, t, intensity) {
+    // smoky ember sky
+    const sky = ctx.createRadialGradient(w / 2, h * .55, 0, w / 2, h * .55, Math.max(w, h) * .8);
+    sky.addColorStop(0, '#7a2a08'); sky.addColorStop(.45, '#3b1406'); sky.addColorStop(1, '#0c0402');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+
+    // spawn far-away clouds near the center; they grow and slide outward as they approach
+    const first = clouds.length === 0;
+    while (clouds.length < 16) {
+      const a = Math.random() * Math.PI * 2;
+      clouds.push({ a, d: 0.02 + Math.random() * .1, z: first ? 0.05 + Math.random() * 1.1 : 0.05 + Math.random() * .1, spr: (Math.random() * 5) | 0,
+        rot: (Math.random() - .5) * .6, spd: 0.0016 + Math.random() * .0016 });
+    }
+    clouds.sort((p, q) => p.z - q.z); // far ones first
+    const D = Math.max(w, h);
+    for (let i = clouds.length - 1; i >= 0; i--) {
+      const c = clouds[i];
+      c.z += c.spd * (1 + c.z * 2);
+      c.d += c.spd * 0.9;
+      if (c.z > 1.35) { clouds.splice(i, 1); continue; }
+    }
+    for (const c of clouds) {
+      const size = D * (0.12 + c.z * .75);
+      const x = w / 2 + Math.cos(c.a) * c.d * D * (0.3 + c.z), y = h * .5 + Math.sin(c.a) * c.d * D * (0.22 + c.z * .7);
+      const fadeIn = Math.min(1, c.z * 6), fadeOut = c.z > 1 ? Math.max(0, 1 - (c.z - 1) / .35) : 1;
+      ctx.save(); ctx.globalAlpha = fadeIn * fadeOut;
+      ctx.translate(x, y); ctx.rotate(c.rot + t * 0.00003);
+      ctx.drawImage(cloudSprites[c.spr], -size / 2, -size / 2 * .7, size, size * .7);
+      ctx.restore();
+    }
+
+    // fire light on the cloud undersides
+    const glow = ctx.createRadialGradient(w / 2, h * .56, 0, w / 2, h * .56, D * .55);
+    glow.addColorStop(0, `rgba(255,90,10,${.18 + .14 * intensity})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
+
+    // occasional distant lightning
+    if (t > nextFlash) { flash = 1; nextFlash = t + 3500 + Math.random() * 9000; }
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255,170,120,${flash * .22})`; ctx.fillRect(0, 0, w, h);
+      flash -= .06 + Math.random() * .06; if (flash < 0) flash = 0;
+    }
+    ctx.restore();
+  }
+
   function infernoEye(cx, cy, r, lx, ly, lid, intensity, t) {
     // heat glow behind the eye
     const halo = ctx.createRadialGradient(cx, cy, r * .6, cx, cy, r * 1.8);
@@ -461,6 +530,7 @@
       eye(w / 2 + gap, h / 2, r, look.x, look.y, lid, '#e2541a', true);
     } else if (style === 'inferno') {
       const r = Math.min(w * .3, h * .3);
+      drawStorm(w, h, t, tracking ? 1 : 0.35);
       infernoEye(w / 2, h / 2 + h * .06, r, look.x, look.y, lid, tracking ? 1 : 0.35, t);
       drawFire(r);
     } else if (style === 'cyclops') {
@@ -471,7 +541,7 @@
       eye(w / 2 - p.gap, p.cy, p.r, look.x, look.y, lid, '#ffcc00', true);
       eye(w / 2 + p.gap, p.cy, p.r, look.x, look.y, lid, '#ffcc00', true);
     }
-    if (style !== 'inferno' && parts.length) parts = [];
+    if (style !== 'inferno' && (parts.length || clouds.length)) { parts = []; clouds = []; }
     updateAudio(style === 'inferno', tracking ? 1 : 0.35);
     requestAnimationFrame(frame);
   }
