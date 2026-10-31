@@ -470,7 +470,12 @@
       ctx.stroke();
     }
     // molten iris
-    const ix = cx + lx * r * .42, iy = cy + ly * r * .38, ir = r * .42;
+    // iris can travel until its edge touches the rim; a little extra gain so it reaches the edge
+    // before the person reaches the edge of the camera's view
+    const ir = r * .42, reach = r - ir;
+    let mx = lx * 1.3, my = ly * 1.3;
+    const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
+    const ix = cx + mx * reach, iy = cy + my * reach;
     ctx.shadowColor = '#ff7a00'; ctx.shadowBlur = r * .6;
     const ig = ctx.createRadialGradient(ix, iy, ir * .1, ix, iy, ir);
     ig.addColorStop(0, '#fffbe0'); ig.addColorStop(.35, '#ffd23a'); ig.addColorStop(.75, '#ff6a00'); ig.addColorStop(1, '#9a1a00');
