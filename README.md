@@ -26,6 +26,7 @@ Halloween eyes that watch you. Open the page on a phone or laptop, prop it in a 
 |---|---|
 | Sensitivity | How much movement it takes to catch the eyes' attention |
 | Flip left/right | Use this if the eyes look away from you instead of at you |
+| Flip top/bottom | Use this if the eyes look up when you crouch, or the phone is mounted upside down |
 | Camera view | Shows a small motion preview for tuning |
 | Switch camera | Cycles through cameras (useful on foldables like the Galaxy Z Fold with two front cameras) |
 | Fire sound / Volume | Inferno's roar. Sound starts after you tap, as browsers require. |

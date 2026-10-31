@@ -55,6 +55,7 @@
   <label>Sensitivity <input id="sens" type="range" min="1" max="10" value="6"></label>
   <div class="row">
     <button id="flip">Flip left/right</button>
+    <button id="flipV">Flip top/bottom</button>
     <button id="dbgBtn">Camera view</button>
     <button id="camBtn">Switch camera</button>
   </div>
@@ -71,7 +72,7 @@
   const errEl = document.getElementById('err');
   const dbg = document.getElementById('dbg'), dctx = dbg.getContext('2d');
 
-  let style = 'eyes', flip = false, running = false, showDbg = false;
+  let style = 'eyes', flip = false, flipV = false, running = false, showDbg = false;
   const sensEl = document.getElementById('sens');
 
   // --- UI ---
@@ -82,6 +83,7 @@
     document.querySelectorAll('#styles button').forEach(x => x.classList.toggle('on', x === b));
   });
   document.getElementById('flip').onclick = e => { e.stopPropagation(); flip = !flip; e.target.classList.toggle('on', flip); };
+  document.getElementById('flipV').onclick = e => { e.stopPropagation(); flipV = !flipV; e.target.classList.toggle('on', flipV); };
   document.getElementById('dbgBtn').onclick = e => { e.stopPropagation(); showDbg = !showDbg; dbg.hidden = !showDbg; e.target.classList.toggle('on', showDbg); };
   panel.addEventListener('click', e => e.stopPropagation());
   document.getElementById('go').onclick = async e => {
@@ -279,6 +281,7 @@
         let nx = (sx / n) / W * 2 - 1, ny = (sy / n) / H * 2 - 1;
         nx = -nx;                // front camera image is unmirrored; eyes look toward the person
         if (flip) nx = -nx;
+        if (flipV) ny = -ny;     // for phones mounted upside down, or cameras below the screen
         target.x += (nx - target.x) * 0.35;
         target.y += (ny - target.y) * 0.35;
         lastSeen = performance.now();
