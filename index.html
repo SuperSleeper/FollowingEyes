@@ -43,10 +43,8 @@
   <h1>Watching Eyes</h1>
   <p>Front camera tracks movement. Nothing is recorded or sent anywhere. Tap the screen anytime to bring this panel back.</p>
   <div class="row" id="styles">
-    <button data-s="eyes" class="on">Eyes</button>
-    <button data-s="pumpkin">Pumpkin</button>
-    <button data-s="cyclops">Cyclops</button>
-    <button data-s="inferno">Inferno</button>
+    <button data-s="inferno" class="on">Inferno</button>
+    <button data-s="eyes">Eyes</button>
   </div>
   <div class="row">
     <button id="sndBtn" class="on">Fire sound: on</button>
@@ -65,58 +63,20 @@
 </div>
 
 <script>
-/* =============================================================================
-   FOLLOWING EYES
-   Halloween eyes that watch whoever moves in front of the camera.
-
-   HOW THE FILE IS ORGANIZED
-     1. Setup          – canvas, page elements, settings shared by every style
-     2. Settings panel – buttons and sliders
-     3. Camera         – opening the camera, switching cameras, error messages
-     4. Motion tracker – finds where movement is in the camera image
-     5. Gaze & blink   – turns that movement into where the eyes look, plus blinking
-     6. STYLE: Eyes      (also defines classicEye(), reused by Pumpkin and Cyclops)
-     7. STYLE: Pumpkin
-     8. STYLE: Cyclops
-     9. STYLE: Inferno   (eye, fire particles, storm sky, fire sound)
-    10. Main loop      – runs every screen refresh and calls the active style
-
-   ADDING A NEW STYLE
-     Add a button with data-s="name" in the panel HTML, then add an entry to
-     STYLES with a draw(scene) function. Optional: activate() and deactivate().
-   ============================================================================= */
 (() => {
-
-  /* ===========================================================================
-     1. SETUP
-     =========================================================================== */
   const $ = id => document.getElementById(id);
-  const cv = $('c'), ctx = cv.getContext('2d');   // main drawing canvas (full screen)
-  const video = $('v');                            // hidden <video> that receives the camera
+  const cv = $('c'), ctx = cv.getContext('2d');
+  const video = $('v');
   const panel = $('panel'), errEl = $('err'), statusEl = $('status');
   const sensEl = $('sens'), volEl = $('vol');
-  const dbg = $('dbg'), dctx = dbg.getContext('2d'); // small "Camera view" preview
+  const dbg = $('dbg'), dctx = dbg.getContext('2d');
 
-  // Settings shared by all styles
-  let style = 'eyes';      // which entry in STYLES is active
-  let flip = false;        // mirror left/right tracking
-  let flipV = false;       // mirror up/down tracking
-  let showDbg = false;     // show the motion preview
-  let running = false;     // camera is streaming
-  let soundOn = true;      // Inferno fire sound toggle
+  let style = 'inferno';
+  let flip = false, flipV = false, showDbg = false, running = false, soundOn = true;
 
-  // Canvas matches the screen in real pixels so drawing stays sharp
   function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; }
   addEventListener('resize', resize); resize();
 
-
-  /* ===========================================================================
-     2. SETTINGS PANEL
-     Every handler stops the click from reaching the canvas, because a canvas
-     tap toggles the panel.
-     =========================================================================== */
-
-  // Style buttons: switch the active style and let it start/stop its extras
   document.querySelectorAll('#styles button').forEach(b => b.onclick = e => {
     e.stopPropagation();
     const next = b.dataset.s;
@@ -128,7 +88,6 @@
     document.querySelectorAll('#styles button').forEach(x => x.classList.toggle('on', x === b));
   });
 
-  // Simple on/off toggles
   function toggle(id, apply) {
     $(id).onclick = e => { e.stopPropagation(); e.target.classList.toggle('on', apply()); };
   }
@@ -144,8 +103,6 @@
     if (soundOn) FireSound.start();
   };
 
-  // Start: hide the panel, go fullscreen, keep the screen awake.
-  // Browsers only allow sound after a tap, so this is also where audio unlocks.
   $('go').onclick = async e => {
     e.stopPropagation();
     if (!running) await Camera.start();
@@ -158,22 +115,15 @@
   };
 
   panel.addEventListener('click', e => e.stopPropagation());
-  cv.addEventListener('click', () => { panel.hidden = !panel.hidden; }); // tap anywhere: show/hide panel
+  cv.addEventListener('click', () => { panel.hidden = !panel.hidden; });
 
-  // The screen-awake lock is dropped when the tab is hidden; ask again on return
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible' && running) { try { await navigator.wakeLock.request('screen'); } catch (_) {} }
   });
 
-
-  /* ===========================================================================
-     3. CAMERA
-     Opens the front camera, explains failures in plain words, and lets the
-     viewer cycle cameras (foldables have more than one front camera).
-     =========================================================================== */
   const Camera = (() => {
     let cams = [], camIdx = -1, stream = null;
-    const LOW_RES = { width: { ideal: 320 }, height: { ideal: 240 } }; // tracking needs very few pixels
+    const LOW_RES = { width: { ideal: 320 }, height: { ideal: 240 } };
 
     function status(m) { statusEl.textContent = 'Status: ' + m; }
     function showErr(m) { errEl.textContent = m; errEl.hidden = false; status('camera not running'); }
@@ -191,49 +141,37 @@
     async function start() {
       errEl.hidden = true;
       status('secure page: ' + (window.isSecureContext ? 'yes' : 'NO') + ', address: ' + location.protocol + '//' + (location.host || '(local file)'));
-
-      // Browsers only offer the camera on https:// pages (or localhost)
       if (!window.isSecureContext || !navigator.mediaDevices || /^(content|file):$/.test(location.protocol)) {
-        showErr('Chrome will not ask for the camera on this address. It must start with https://. Opening the file from My Files / Downloads will not work.'); return;
+        showErr('Chrome will not ask for the camera on this address. It must start with https://.'); return;
       }
-      // Already blocked for this site? Say how to unblock instead of failing silently
       try {
         const st = await navigator.permissions.query({ name: 'camera' });
         if (st.state === 'denied') {
-          showErr('Camera is blocked for this site. Tap the slider icon left of the address bar → Permissions → Camera → Allow, then reload.'); return;
+          showErr('Camera blocked. Grant permission in browser settings.'); return;
         }
       } catch (_) {}
-
       try {
-        try {
-          await open({ facingMode: 'user', ...LOW_RES });     // prefer the front camera
-        } catch (e) {
+        try { await open({ facingMode: 'user', ...LOW_RES }); }
+        catch (e) {
           if (e.name === 'NotAllowedError' || e.name === 'SecurityError') throw e;
-          await open(true);                                   // fallback: any camera
+          await open(true);
         }
         running = true;
-        // Remember the camera list so "Switch camera" can cycle through it
         try {
           cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
           const cur = stream.getVideoTracks()[0].getSettings().deviceId;
           camIdx = Math.max(0, cams.findIndex(c => c.deviceId === cur));
         } catch (_) {}
       } catch (e) {
-        showErr({
-          NotAllowedError: 'Permission denied. Tap the slider icon left of the address bar → Permissions → Camera → Allow, then reload.',
-          NotReadableError: 'Another app is using the camera. Close the camera app, video calls, or other tabs using it, then reload.',
-          NotFoundError: 'Chrome found no camera. Check Android Settings → Apps → Chrome → Permissions → Camera.',
-          AbortError: 'The camera failed to start. Close other camera apps and reload.'
-        }[e.name] || ('Camera error: ' + e.name + ' – ' + e.message));
+        showErr('Camera error: ' + (e.name || e.message));
       }
     }
 
     async function next() {
       if (!running) { await start(); return; }
-      if (cams.length < 2) { status('only ' + cams.length + ' camera visible to Chrome'); return; }
+      if (cams.length < 2) return;
       camIdx = (camIdx + 1) % cams.length;
-      try { await open({ deviceId: { exact: cams[camIdx].deviceId }, ...LOW_RES }); }
-      catch (err) { status('could not open camera ' + (camIdx + 1) + ': ' + err.name); }
+      try { await open({ deviceId: { exact: cams[camIdx].deviceId }, ...LOW_RES }); } catch (_) {}
     }
 
     return { start, next };
@@ -241,56 +179,44 @@
 
   $('camBtn').onclick = e => { e.stopPropagation(); Camera.next(); };
 
-
-  /* ===========================================================================
-     4. MOTION TRACKER
-     Shrinks each camera frame to 64×48 grayscale and compares it with the
-     previous frame. Pixels that changed are "motion"; the average position of
-     those pixels is where the eyes should look. Cheap enough for any phone and
-     works at porch distance, unlike face detection.
-     =========================================================================== */
   const Motion = (() => {
     const W = 64, H = 48;
     const work = document.createElement('canvas'); work.width = W; work.height = H;
     const wctx = work.getContext('2d', { willReadFrequently: true });
     dbg.width = W; dbg.height = H;
 
-    let prev = null;                  // previous grayscale frame
-    const target = { x: 0, y: 0 };    // where motion is, -1..1 on each axis (0 = center)
-    let lastSeen = 0;                 // time movement was last detected (ms)
+    let prev = null;
+    const target = { x: 0, y: 0 };
+    let lastSeen = 0;
 
     function sample() {
       if (!running || video.readyState < 2) return;
-
-      // Downscale and convert to grayscale
       wctx.drawImage(video, 0, 0, W, H);
       const d = wctx.getImageData(0, 0, W, H).data;
       const g = new Uint8ClampedArray(W * H);
       for (let i = 0, j = 0; j < g.length; i += 4, j++) g[j] = (d[i] * 3 + d[i + 1] * 4 + d[i + 2]) >> 3;
 
       if (prev) {
-        const thr = 52 - sensEl.value * 4;          // Sensitivity 1..10 → change threshold 48..12
+        const thr = 52 - sensEl.value * 4;
         let sx = 0, sy = 0, n = 0;
         const out = showDbg ? dctx.createImageData(W, H) : null;
 
         for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
           const k = y * W + x, diff = Math.abs(g[k] - prev[k]);
           if (diff > thr) { sx += x; sy += y; n++; }
-          if (out) {                                 // Camera view: moving pixels in red
+          if (out) {
             const o = k * 4, gray = g[k] >> 1;
             out.data[o] = diff > thr ? 255 : gray; out.data[o + 1] = gray; out.data[o + 2] = gray; out.data[o + 3] = 255;
           }
         }
         if (out) dctx.putImageData(out, 0, 0);
 
-        // Ignore specks of noise and whole-frame changes (lights flicking, phone bumped)
-        const share = n / (W * H);
-        if (n > 6 && share < 0.6) {
+        if (n > 6 && (n / (W * H)) < 0.6) {
           let nx = (sx / n) / W * 2 - 1, ny = (sy / n) / H * 2 - 1;
-          nx = -nx;                // front camera image is unmirrored; this makes the eyes look toward the person
+          nx = -nx;
           if (flip) nx = -nx;
-          if (flipV) ny = -ny;     // phone mounted upside down, or camera below the screen
-          target.x += (nx - target.x) * 0.35;        // smooth out jitter
+          if (flipV) ny = -ny;
+          target.x += (nx - target.x) * 0.35;
           target.y += (ny - target.y) * 0.35;
           lastSeen = performance.now();
         }
@@ -301,16 +227,6 @@
     return { sample, target, reset: () => { prev = null; }, lastSeen: () => lastSeen };
   })();
 
-
-  /* ===========================================================================
-     5. GAZE & BLINK  (shared by every style)
-     Produces a "scene" object each frame that the styles draw from:
-       look.x / look.y – where to look, -1..1
-       lid             – 0 open .. 1 shut
-       pupil           – 1 relaxed .. 0.55 focused on someone
-       tracking        – true while someone was seen in the last 1.8 s
-       intensity       – 1 when tracking, 0.35 when idle (used by Inferno)
-     =========================================================================== */
   const Gaze = (() => {
     const look = { x: 0, y: 0 };
     let idleUntil = 0, idleGoal = { x: 0, y: 0 };
@@ -322,9 +238,8 @@
       let gx, gy;
       if (tracking) {
         gx = Motion.target.x; gy = Motion.target.y;
-        pupil += (0.55 - pupil) * .1;                 // narrow the pupil on a target
+        pupil += (0.55 - pupil) * .1;
       } else {
-        // Nobody moving: glance around at random spots
         if (t > idleUntil) {
           idleGoal = { x: (Math.random() * 2 - 1) * .8, y: (Math.random() * 2 - 1) * .5 };
           idleUntil = t + 1200 + Math.random() * 2500;
@@ -332,10 +247,9 @@
         gx = idleGoal.x; gy = idleGoal.y;
         pupil += (1 - pupil) * .05;
       }
-      const k = tracking ? .18 : .06;                 // snap quickly to people, drift lazily when idle
+      const k = tracking ? .18 : .06;
       look.x += (gx - look.x) * k; look.y += (gy - look.y) * k;
 
-      // Blink every 2.5–7 s; lid follows a quick close-open curve
       if (t > nextBlink) { blink = 1; nextBlink = t + 2500 + Math.random() * 4500; }
       const lid = blink > 0 ? Math.sin(blink * Math.PI) : 0;
       if (blink > 0) blink = Math.max(0, blink - .08);
@@ -345,21 +259,13 @@
     return { update };
   })();
 
-
-  /* ===========================================================================
-     6. STYLE: EYES — two bloodshot eyes with glowing orange irises
-     classicEye() is the shared eyeball drawing, also used by Pumpkin and Cyclops.
-     =========================================================================== */
   function classicEye(cx, cy, r, s, irisCol) {
     const { look, lid, pupil } = s;
-
-    // White of the eye, shaded toward the edges
     const sg = ctx.createRadialGradient(cx - r * .2, cy - r * .3, r * .1, cx, cy, r);
     sg.addColorStop(0, '#fff8ee'); sg.addColorStop(.75, '#e8d6c4'); sg.addColorStop(1, '#9c6a5a');
     ctx.save();
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = sg; ctx.fill(); ctx.clip();
 
-    // Bloodshot veins creeping in from the rim
     ctx.strokeStyle = 'rgba(170,20,20,.45)'; ctx.lineWidth = r * .012;
     for (let i = 0; i < 9; i++) {
       const a = i * 0.7 + cx * 0.001;
@@ -369,7 +275,6 @@
       ctx.stroke();
     }
 
-    // Glowing iris, offset toward where the eye is looking
     const ix = cx + look.x * r * .45, iy = cy + look.y * r * .4, ir = r * .45;
     ctx.shadowColor = irisCol; ctx.shadowBlur = r * .5;
     const ig = ctx.createRadialGradient(ix, iy, ir * .2, ix, iy, ir);
@@ -377,16 +282,13 @@
     ctx.beginPath(); ctx.arc(ix, iy, ir, 0, Math.PI * 2); ctx.fillStyle = ig; ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Slit pupil that narrows when it spots someone
     ctx.fillStyle = '#000';
     ctx.beginPath(); ctx.ellipse(ix, iy, ir * .16 * pupil, ir * .8, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Wet highlight
     ctx.fillStyle = 'rgba(255,255,255,.75)';
     ctx.beginPath(); ctx.arc(ix - ir * .35, iy - ir * .4, ir * .14, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Lids: black bars from top and bottom (background is black, so they read as lids)
     if (lid > 0) {
       const bar = (r * 2 + 4) * lid / 2;
       ctx.fillStyle = '#050304';
@@ -403,119 +305,7 @@
     }
   };
 
-
-  /* ===========================================================================
-     7. STYLE: PUMPKIN — jack-o'-lantern with two watching eyes
-     =========================================================================== */
-  const PumpkinStyle = {
-    draw(s) {
-      const { w, h } = s;
-      const cx = w / 2, cy = h / 2 + h * .05, R = Math.min(w * .46, h * .44);
-
-      // Body: five overlapping lobes, lit from the upper middle
-      for (let i = -2; i <= 2; i++) {
-        const g = ctx.createRadialGradient(cx + i * R * .3, cy - R * .2, R * .1, cx + i * R * .3, cy, R);
-        g.addColorStop(0, '#ff9a2e'); g.addColorStop(1, '#8a3300');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.ellipse(cx + i * R * .32, cy, R * .42, R * .8, 0, 0, Math.PI * 2); ctx.fill();
-      }
-      // Stem
-      ctx.fillStyle = '#3d5a1e'; ctx.fillRect(cx - R * .06, cy - R * .98, R * .12, R * .22);
-
-      // Jagged grin
-      ctx.fillStyle = '#050304';
-      ctx.beginPath(); ctx.moveTo(cx - R * .55, cy + R * .25);
-      const teeth = 6;
-      for (let i = 0; i <= teeth; i++) ctx.lineTo(cx - R * .55 + i * R * 1.1 / teeth, cy + R * .25 + (i % 2 ? R * .12 : 0));
-      ctx.quadraticCurveTo(cx, cy + R * .75, cx - R * .55, cy + R * .25); ctx.fill();
-
-      // Eyes in the carved sockets
-      const eyeY = cy - R * .25, eyeR = R * .22, gap = R * .34;
-      classicEye(cx - gap, eyeY, eyeR, s, '#ffcc00');
-      classicEye(cx + gap, eyeY, eyeR, s, '#ffcc00');
-    }
-  };
-
-
-  /* ===========================================================================
-     8. STYLE: CYCLOPS — one huge green eye
-     =========================================================================== */
-  const CyclopsStyle = {
-    draw(s) {
-      classicEye(s.w / 2, s.h / 2, Math.min(s.w, s.h) * .42, s, '#7bd12a');
-    }
-  };
-
-
-  /* ===========================================================================
-     9. STYLE: INFERNO — burning eye in a storm, with a roaring fire sound
-        9a. Fire particles  – flames pouring off the iris
-        9b. Storm sky       – ember sky, approaching clouds, lightning
-        9c. Fire sound      – synthesized roar, hiss, crackle (no audio files)
-        9d. The eye         – charred eyeball, molten iris; ties 9a–9c together
-     =========================================================================== */
-
-  /* ---- 9a. Fire particles -------------------------------------------------
-     Each flame is a soft glowing dot that drifts outward from the iris, rises,
-     flickers sideways, and fades from white-hot → orange → red → ember.
-     Drawn with additive blending so overlapping flames brighten. */
-  const Fire = (() => {
-    // Pre-rendered glow dots, one per stage of a flame's life
-    function glowDot(inner, mid) {
-      const c = document.createElement('canvas'); c.width = c.height = 64;
-      const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gr.addColorStop(0, inner); gr.addColorStop(.4, mid); gr.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return c;
-    }
-    const stages = [
-      glowDot('rgba(255,250,210,.55)', 'rgba(255,200,70,.35)'), // white-hot
-      glowDot('rgba(255,180,50,.6)',   'rgba(255,100,10,.35)'), // yellow-orange
-      glowDot('rgba(255,90,10,.55)',   'rgba(190,30,0,.3)'),    // orange-red
-      glowDot('rgba(160,30,0,.6)',     'rgba(60,10,0,.25)')     // dying ember
-    ];
-    const MAX = 1600;  // cap so slow phones don't bog down
-    let parts = [];
-
-    // Emit `rate` new flames from the iris rim
-    function spawn(ix, iy, ir, r, rate, intensity) {
-      for (let i = 0; i < rate && parts.length < MAX; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = r * (0.006 + Math.random() * 0.012) * (0.8 + intensity);
-        parts.push({
-          x: ix + Math.cos(a) * ir * .95, y: iy + Math.sin(a) * ir * .95,
-          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - r * 0.004,
-          life: 0, max: 35 + Math.random() * 40,             // lifetime in frames
-          size: ir * (0.22 + Math.random() * 0.3),
-          wob: Math.random() * 6                             // flicker phase
-        });
-      }
-    }
-
-    // Move and draw every flame; r scales the motion to the eye's size
-    function draw(r) {
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      for (let i = parts.length - 1; i >= 0; i--) {
-        const p = parts[i];
-        if (++p.life > p.max) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
-        const f = p.life / p.max;                                   // 0 new .. 1 dead
-        p.vy -= r * 0.00045;                                        // flames rise
-        p.vx += Math.sin(p.life * 0.25 + p.wob) * r * 0.0006;       // flicker sideways
-        p.vx *= 0.985; p.x += p.vx; p.y += p.vy;
-        const s = p.size * (1 - f * 0.55);
-        ctx.globalAlpha = 1 - f * f;
-        ctx.drawImage(stages[Math.min(3, (f * 4) | 0)], p.x - s, p.y - s, s * 2, s * 2);
-      }
-      ctx.restore(); ctx.globalAlpha = 1;
-    }
-
-    return { spawn, draw, clear: () => { parts = []; } };
-  })();
-
-  /* ---- 9b. Storm sky -----------------------------------------------------
-     Clouds start small and faint near the center (far away), then grow and
-     slide outward past the screen edges, so they appear to roll toward you. */
   const Storm = (() => {
-    // Build a lumpy cloud from overlapping soft puffs; seeded so shapes vary but stay stable
     function cloudShape(seed) {
       const c = document.createElement('canvas'); c.width = c.height = 256;
       const g = c.getContext('2d');
@@ -528,7 +318,6 @@
         gr.addColorStop(1, 'rgba(0,0,0,0)');
         g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fill();
       }
-      // Ember light catching the underside
       g.globalCompositeOperation = 'source-atop';
       const lit = g.createLinearGradient(0, 90, 0, 230);
       lit.addColorStop(0, 'rgba(0,0,0,0)'); lit.addColorStop(1, 'rgba(255,90,20,.35)');
@@ -542,26 +331,22 @@
     function draw(s) {
       const { w, h, t, intensity } = s, D = Math.max(w, h);
 
-      // Smoky ember sky, brightest behind the eye
       const sky = ctx.createRadialGradient(w / 2, h * .55, 0, w / 2, h * .55, D * .8);
-      sky.addColorStop(0, '#7a2a08'); sky.addColorStop(.45, '#3b1406'); sky.addColorStop(1, '#0c0402');
+      sky.addColorStop(0, '#5a1d05'); sky.addColorStop(.45, '#2b0c03'); sky.addColorStop(1, '#080201');
       ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
 
-      // Keep the sky stocked. On the first frame spread clouds at every distance
-      // so the scene opens full instead of empty.
       const first = clouds.length === 0;
       while (clouds.length < COUNT) {
         clouds.push({
-          a: Math.random() * Math.PI * 2,                    // direction from center
-          d: 0.02 + Math.random() * .1,                      // distance from center
-          z: first ? 0.05 + Math.random() * 1.1 : 0.05 + Math.random() * .1, // nearness: 0 far .. 1.35 passed you
+          a: Math.random() * Math.PI * 2,
+          d: 0.02 + Math.random() * .1,
+          z: first ? 0.05 + Math.random() * 1.1 : 0.05 + Math.random() * .1,
           spr: (Math.random() * shapes.length) | 0,
           rot: (Math.random() - .5) * .6,
           spd: 0.0016 + Math.random() * .0016
         });
       }
 
-      // Advance: clouds speed up as they get closer, and drop out once past the viewer
       for (let i = clouds.length - 1; i >= 0; i--) {
         const c = clouds[i];
         c.z += c.spd * (1 + c.z * 2);
@@ -569,7 +354,6 @@
         if (c.z > 1.35) clouds.splice(i, 1);
       }
 
-      // Draw far clouds first so near ones cover them
       clouds.sort((p, q) => p.z - q.z);
       for (const c of clouds) {
         const size = D * (0.12 + c.z * .75);
@@ -582,13 +366,11 @@
         ctx.restore();
       }
 
-      // Firelight washing over the clouds; stronger when the eye spots someone
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const glow = ctx.createRadialGradient(w / 2, h * .56, 0, w / 2, h * .56, D * .55);
       glow.addColorStop(0, `rgba(255,90,10,${.18 + .14 * intensity})`); glow.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = glow; ctx.fillRect(0, 0, w, h);
 
-      // Distant lightning every 3.5–12.5 s, with a flickering fade
       if (t > nextFlash) { flash = 1; nextFlash = t + 3500 + Math.random() * 9000; }
       if (flash > 0) {
         ctx.fillStyle = `rgba(255,170,120,${flash * .22})`; ctx.fillRect(0, 0, w, h);
@@ -600,17 +382,56 @@
     return { draw, clear: () => { clouds = []; } };
   })();
 
-  /* ---- 9c. Fire sound ----------------------------------------------------
-     Built live with the Web Audio API:
-       roar    – brown noise through a low-pass filter, with slow "breathing"
-       hiss    – white noise through a band-pass filter
-       crackle – short high-passed noise pops at random intervals
-     A compressor keeps loud volume settings from distorting. */
-  const FireSound = (() => {
-    let audio = null;     // created on first start (needs a tap)
-    let level = 0;        // current loudness 0..1, also controls crackle rate
+  const Fire = (() => {
+    function glowDot(inner, mid) {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, inner); gr.addColorStop(.4, mid); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return c;
+    }
+    const stages = [
+      glowDot('rgba(255,250,210,.6)', 'rgba(255,200,70,.4)'),
+      glowDot('rgba(255,180,50,.65)', 'rgba(255,100,10,.4)'),
+      glowDot('rgba(255,90,10,.6)',  'rgba(190,30,0,.35)'),
+      glowDot('rgba(160,30,0,.65)',  'rgba(60,10,0,.3)')
+    ];
+    let parts = [];
 
-    // Loopable noise; brown noise is "deeper" than white
+    function spawn(ix, iy, ir, r, rate, intensity) {
+      for (let i = 0; i < rate && parts.length < 1600; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = r * (0.005 + Math.random() * 0.01) * (0.8 + intensity);
+        parts.push({
+          x: ix + Math.cos(a) * ir * .8, y: iy + Math.sin(a) * ir * .5,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - r * 0.003,
+          life: 0, max: 30 + Math.random() * 35,
+          size: ir * (0.2 + Math.random() * 0.25),
+          wob: Math.random() * 6
+        });
+      }
+    }
+
+    function draw(r) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
+        if (++p.life > p.max) { parts[i] = parts[parts.length - 1]; parts.pop(); continue; }
+        const f = p.life / p.max;
+        p.vy -= r * 0.0004;
+        p.vx += Math.sin(p.life * 0.25 + p.wob) * r * 0.0005;
+        p.vx *= 0.985; p.x += p.vx; p.y += p.vy;
+        const s = p.size * (1 - f * 0.5);
+        ctx.globalAlpha = 1 - f * f;
+        ctx.drawImage(stages[Math.min(3, (f * 4) | 0)], p.x - s, p.y - s, s * 2, s * 2);
+      }
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+
+    return { spawn, draw, clear: () => { parts = []; } };
+  })();
+
+  const FireSound = (() => {
+    let audio = null, level = 0;
     function noise(ac, seconds, brown) {
       const len = ac.sampleRate * seconds, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
       let last = 0;
@@ -625,162 +446,205 @@
       if (audio) { audio.ac.resume(); return; }
       const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
       const ac = new AC();
-
-      // Output chain: everything → master volume → compressor → speakers
       const comp = ac.createDynamicsCompressor();
       comp.threshold.value = -18; comp.ratio.value = 4; comp.knee.value = 10;
       const master = ac.createGain(); master.gain.value = 0;
       master.connect(comp); comp.connect(ac.destination);
 
-      // Roar, with two slow wobbles: one on volume, one on brightness
       const roarSrc = ac.createBufferSource(); roarSrc.buffer = noise(ac, 4, true); roarSrc.loop = true;
       const roarLP = ac.createBiquadFilter(); roarLP.type = 'lowpass'; roarLP.frequency.value = 520; roarLP.Q.value = 0.7;
       const roarGain = ac.createGain(); roarGain.gain.value = 1.6;
-      const breath = ac.createOscillator(); breath.frequency.value = 0.35;
-      const breathAmt = ac.createGain(); breathAmt.gain.value = 0.5;
-      breath.connect(breathAmt); breathAmt.connect(roarGain.gain);
-      const sway = ac.createOscillator(); sway.frequency.value = 0.13;
-      const swayAmt = ac.createGain(); swayAmt.gain.value = 180;
-      sway.connect(swayAmt); swayAmt.connect(roarLP.frequency);
       roarSrc.connect(roarLP); roarLP.connect(roarGain); roarGain.connect(master);
 
-      // Hiss
       const hissSrc = ac.createBufferSource(); hissSrc.buffer = noise(ac, 3, false); hissSrc.loop = true;
       const hissBP = ac.createBiquadFilter(); hissBP.type = 'bandpass'; hissBP.frequency.value = 1800; hissBP.Q.value = 0.6;
       const hissGain = ac.createGain(); hissGain.gain.value = 0.12;
       hissSrc.connect(hissBP); hissBP.connect(hissGain); hissGain.connect(master);
 
-      // Crackles: 1–3 pops at a time, more often when the fire is louder
-      const popBuf = noise(ac, 0.05, false);
-      function crackle() {
-        const now = ac.currentTime;
-        if (level > 0.05) {
-          const n = 1 + (Math.random() * 3 | 0);
-          for (let i = 0; i < n; i++) {
-            const src = ac.createBufferSource(); src.buffer = popBuf;
-            const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500 + Math.random() * 3000;
-            const g = ac.createGain(), t0 = now + i * (0.01 + Math.random() * 0.04);
-            g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.25 + Math.random() * 0.5, t0 + 0.002);
-            g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.03 + Math.random() * 0.05);
-            src.connect(hp); hp.connect(g); g.connect(master); src.start(t0); src.stop(t0 + 0.1);
-          }
-        }
-        setTimeout(crackle, 40 + Math.random() * 260 / (0.3 + level));
-      }
-
-      roarSrc.start(); hissSrc.start(); breath.start(); sway.start();
-      audio = { ac, master, roarLP, hissGain };
-      crackle();
+      roarSrc.start(); hissSrc.start();
+      audio = { ac, master, roarLP };
     }
 
-    // Called every frame: fade toward the right loudness for the current state
-    function update(active, intensity) {
-      if (!audio) return;
-      const want = (soundOn && active) ? (volEl.value / 10) * (0.55 + 0.45 * intensity) : 0;
-      level = want;
-      const now = audio.ac.currentTime;
-      audio.master.gain.setTargetAtTime(want, now, 0.25);
-      audio.roarLP.frequency.setTargetAtTime(420 + 500 * intensity, now, 0.3); // roar opens up when it sees someone
-      audio.hissGain.gain.setTargetAtTime(0.08 + 0.12 * intensity, now, 0.3);
+    function setVolume(v, intensity) {
+      if (!audio || !soundOn) return;
+      level = (v / 10) * (0.45 + 0.55 * intensity);
+      audio.master.gain.setTargetAtTime(level * 0.5, audio.ac.currentTime, 0.08);
+      audio.roarLP.frequency.setTargetAtTime(320 + level * 380, audio.ac.currentTime, 0.1);
     }
 
-    return { start, update };
+    function stop() { if (audio) audio.master.gain.setTargetAtTime(0, audio.ac.currentTime, 0.08); }
+
+    return { start, setVolume, stop };
   })();
 
-  /* ---- 9d. The eye -------------------------------------------------------- */
   const InfernoStyle = {
-    activate() { if (soundOn) FireSound.start(); },  // style button is a tap, so audio may start here
-    deactivate() { Fire.clear(); Storm.clear(); },
-
     draw(s) {
       const { w, h, t, look, lid, pupil, intensity } = s;
-      const r = Math.min(w * .3, h * .3);
-      const cx = w / 2, cy = h / 2 + h * .06;
+      const cx = w / 2, cy = h / 2 - h * 0.02;
+      const rx = Math.min(w * 0.38, h * 0.55);
+      const ry = rx * 0.62;
 
+      // 1. Draw Storm Background
       Storm.draw(s);
 
-      // Heat glow behind the eye
-      const halo = ctx.createRadialGradient(cx, cy, r * .6, cx, cy, r * 1.8);
-      halo.addColorStop(0, 'rgba(255,90,0,' + (.35 + .25 * intensity) + ')'); halo.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = halo; ctx.fillRect(cx - r * 2, cy - r * 2, r * 4, r * 4);
-
-      // Everything below is clipped to the round eyeball
+      // 2. Barad-dûr Fortress Tower Base & Main Horns
       ctx.save();
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+      const hornGrad = ctx.createLinearGradient(0, cy - ry * 2, 0, cy + ry * 2.2);
+      hornGrad.addColorStop(0, '#28130d');
+      hornGrad.addColorStop(0.35, '#ff8030');
+      hornGrad.addColorStop(0.7, '#1e0c08');
+      hornGrad.addColorStop(1, '#090302');
 
-      // Charred eyeball
-      const sg = ctx.createRadialGradient(cx, cy, r * .2, cx, cy, r);
-      sg.addColorStop(0, '#5a1404'); sg.addColorStop(.7, '#260602'); sg.addColorStop(1, '#0a0201');
-      ctx.fillStyle = sg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.fillStyle = hornGrad;
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = rx * 0.018;
 
-      // Glowing cracks that pulse slowly
-      ctx.strokeStyle = 'rgba(255,120,20,' + (.35 + .2 * Math.sin(t / 300)) + ')'; ctx.lineWidth = r * .015;
-      for (let i = 0; i < 12; i++) {
-        const a = i * 0.53;
-        ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        ctx.lineTo(cx + Math.cos(a + .15) * r * .7, cy + Math.sin(a + .15) * r * .7);
-        ctx.lineTo(cx + Math.cos(a - .05) * r * .55, cy + Math.sin(a - .05) * r * .55);
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.moveTo(cx - rx * 1.35, h);
+      ctx.quadraticCurveTo(cx - rx * 1.3, cy + ry * 1.5, cx - rx * 1.28, cy + ry * 1.1);
+      ctx.lineTo(cx - rx * 1.25, cy + ry * 1.3);
+      ctx.quadraticCurveTo(cx - rx * 1.05, cy - ry * 0.8, cx - rx * 1.1, cy - ry * 2.2);
+      ctx.quadraticCurveTo(cx - rx * 0.85, cy + ry * 0.4, cx - rx * 0.2, cy + ry * 1.15);
 
-      // Molten iris. Its center can travel 80% of the way to the rim (the rim clips
-      // its outer edge). 1.3× gain gets it to the edge before the person leaves the
-      // camera's view; the length is capped so diagonals stay on a circle.
-      const ir = r * .42, reach = r * .8;
-      let mx = look.x * 1.3, my = look.y * 1.3;
-      const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
-      const ix = cx + mx * reach, iy = cy + my * reach;
-      ctx.shadowColor = '#ff7a00'; ctx.shadowBlur = r * .6;
-      const ig = ctx.createRadialGradient(ix, iy, ir * .1, ix, iy, ir);
-      ig.addColorStop(0, '#fffbe0'); ig.addColorStop(.35, '#ffd23a'); ig.addColorStop(.75, '#ff6a00'); ig.addColorStop(1, '#9a1a00');
-      ctx.beginPath(); ctx.arc(ix, iy, ir, 0, Math.PI * 2); ctx.fillStyle = ig; ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.lineTo(cx, cy + ry * 0.3);
+      ctx.lineTo(cx + rx * 0.2, cy + ry * 1.15);
 
-      // Round pupil that pulses like a heartbeat
-      const pr = ir * (0.28 + 0.12 * pupil) * (1 + .05 * Math.sin(t / 120));
-      ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(ix, iy, pr, 0, Math.PI * 2); ctx.fill();
+      ctx.quadraticCurveTo(cx + rx * 0.85, cy + ry * 0.4, cx + rx * 1.1, cy - ry * 2.2);
+      ctx.quadraticCurveTo(cx + rx * 1.05, cy - ry * 0.8, cx + rx * 1.25, cy + ry * 1.3);
+      ctx.lineTo(cx + rx * 1.28, cy + ry * 1.1);
+      ctx.quadraticCurveTo(cx + rx * 1.3, cy + ry * 1.5, cx + rx * 1.35, h);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
 
-      // Charred lids (clipped to the eyeball so no square edges show over the glow)
-      if (lid > 0) {
-        const bar = r * 2 * lid / 2;
-        ctx.fillStyle = '#140402';
-        ctx.fillRect(cx - r, cy - r, r * 2, bar);
-        ctx.fillRect(cx - r, cy + r - bar, r * 2, bar);
+      ctx.strokeStyle = 'rgba(10,3,1,0.7)';
+      ctx.lineWidth = rx * 0.012;
+      for (let i = 1; i <= 9; i++) {
+        const factor = i / 10;
+        const lx1 = cx - rx * 1.1 + (cx - rx * 0.2 - (cx - rx * 1.1)) * factor;
+        const ly1 = cy - ry * 2.2 + (cy + ry * 1.15 - (cy - ry * 2.2)) * factor;
+        ctx.beginPath(); ctx.moveTo(lx1 - rx * 0.06, ly1 + ry * 0.08); ctx.lineTo(lx1 + rx * 0.12, ly1 - ry * 0.05); ctx.stroke();
+
+        const rx1 = cx + rx * 1.1 + (cx + rx * 0.2 - (cx + rx * 1.1)) * factor;
+        const ry1 = cy - ry * 2.2 + (cy + ry * 1.15 - (cy - ry * 2.2)) * factor;
+        ctx.beginPath(); ctx.moveTo(rx1 + rx * 0.06, ry1 + ry * 0.08); ctx.lineTo(rx1 - rx * 0.12, ry1 - ry * 0.05); ctx.stroke();
       }
       ctx.restore();
 
-      // Flames pour off the iris (fewer while the lids are shut), then draw on top
-      Fire.spawn(ix, iy, ir, r, Math.round((12 + 18 * intensity) * (1 - lid * .8)), intensity);
-      Fire.draw(r);
-    }
+      // Calculate Tracking Iris Position
+      const px = cx + look.x * rx * 0.35;
+      const py = cy + look.y * ry * 0.35;
+
+      // 3. Feathered Fiery Almond Eye Body
+      function drawAlmondPath(context, scaleX = 1, scaleY = 1, timeOffset = 0) {
+        const sx = rx * scaleX;
+        const sy = ry * scaleY;
+        context.beginPath();
+        context.moveTo(cx - sx, cy);
+        const wibble1 = Math.sin(t * 0.005 + timeOffset) * rx * 0.04;
+        const wibble2 = Math.cos(t * 0.004 + timeOffset) * rx * 0.04;
+        context.quadraticCurveTo(cx + wibble1, cy - sy * 1.25 + wibble2, cx + sx, cy);
+        context.quadraticCurveTo(cx - wibble1, cy + sy * 1.25 - wibble2, cx - sx, cy);
+        context.closePath();
+      }
+
+      ctx.save();
+
+      // Soft feathered outer glow layers
+      for (let l = 4; l >= 1; l--) {
+        ctx.save();
+        const sc = 1 + l * 0.06;
+        drawAlmondPath(ctx, sc, sc, l);
+        ctx.fillStyle = `rgba(180, 20, 0, ${0.12 / l})`;
+        ctx.shadowColor = '#ff3300';
+        ctx.shadowBlur = rx * 0.15 * l;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Core Eye Base (Centered relative to iris for smooth light transitions)
+      drawAlmondPath(ctx, 1, 1, 0);
+      const bgGrad = ctx.createRadialGradient(px, py, ry * 0.05, px, py, rx * 1.1);
+      bgGrad.addColorStop(0, '#ffffff');
+      bgGrad.addColorStop(0.2, '#ffe055');
+      bgGrad.addColorStop(0.5, '#ff5500');
+      bgGrad.addColorStop(0.78, '#880c00');
+      bgGrad.addColorStop(0.95, 'rgba(40, 5, 0, 0.85)');
+      bgGrad.addColorStop(1, 'rgba(10, 1, 0, 0)');
+      ctx.fillStyle = bgGrad;
+      ctx.fill();
+      ctx.clip(); // Keep rays and interior flame details bound to the eye shape
+
+      // 4. Radiant Light Tendrils (Anchored to follow the pupil position `px, py`)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 32; i++) {
+        const ang = (i / 32) * Math.PI * 2 + Math.sin(t * 0.001 + i) * 0.05;
+        const len = rx * (0.65 + Math.sin(i * 3 + t * 0.002) * 0.35);
+        ctx.strokeStyle = i % 2 === 0 ? 'rgba(255,230,120,0.42)' : 'rgba(255,80,0,0.35)';
+        ctx.lineWidth = rx * 0.025;
+        ctx.beginPath();
+        ctx.moveTo(px, py); // Light tendrils sweep from tracking pupil location
+        ctx.lineTo(px + Math.cos(ang) * len, py + Math.sin(ang) * (len * 0.62));
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 5. Tracking Cat Slit Pupil
+      const pW = (ry * 0.24 * pupil) * 0.5;
+      const pH = (ry * 1.1) * 0.5;
+
+      ctx.save();
+      ctx.shadowColor = '#ffe600';
+      ctx.shadowBlur = rx * 0.1;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.ellipse(px, py, pW, pH, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Fire Particles emanating from pupil
+      Fire.spawn(px, py, rx * 0.3, rx, (4 + 6 * intensity) | 0, intensity);
+      Fire.draw(rx);
+
+      // Curved Eyelid Blinking
+      if (lid > 0) {
+        ctx.fillStyle = '#050304';
+        const topY = cy - ry * 1.35 + (ry * 1.35) * lid;
+        const botY = cy + ry * 1.35 - (ry * 1.35) * lid;
+
+        ctx.beginPath();
+        ctx.moveTo(cx - rx - 10, cy);
+        ctx.quadraticCurveTo(cx, cy - ry * 1.35, cx + rx + 10, cy);
+        ctx.lineTo(cx + rx + 10, topY);
+        ctx.quadraticCurveTo(cx, topY, cx - rx - 10, topY);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(cx - rx - 10, cy);
+        ctx.quadraticCurveTo(cx, cy + ry * 1.35, cx + rx + 10, cy);
+        ctx.lineTo(cx + rx + 10, botY);
+        ctx.quadraticCurveTo(cx, botY, cx - rx - 10, botY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      ctx.restore();
+      FireSound.setVolume(volEl.value, intensity);
+    },
+    deactivate() { Fire.clear(); Storm.clear(); FireSound.stop(); }
   };
 
+  const STYLES = { inferno: InfernoStyle, eyes: EyesStyle };
 
-  /* ===========================================================================
-     10. MAIN LOOP
-     =========================================================================== */
-  const STYLES = {
-    eyes: EyesStyle,
-    pumpkin: PumpkinStyle,
-    cyclops: CyclopsStyle,
-    inferno: InfernoStyle
-  };
-
-  function frame(t) {
-    Motion.sample();                       // read the camera
-    const s = Gaze.update(t);              // decide where to look and whether to blink
-
-    ctx.fillStyle = '#050304';             // clear to near-black
-    ctx.fillRect(0, 0, s.w, s.h);
-
-    STYLES[style].draw(s);
-    FireSound.update(style === 'inferno', s.intensity);  // fades out when not on Inferno
-
-    requestAnimationFrame(frame);
+  function loop(t) {
+    requestAnimationFrame(loop);
+    Motion.sample();
+    const scene = Gaze.update(t);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    STYLES[style].draw(scene);
   }
-
-  Camera.start();                          // ask for the camera as soon as the page opens
-  requestAnimationFrame(frame);
+  requestAnimationFrame(loop);
 })();
 </script>
 </body>
